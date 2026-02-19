@@ -1,12 +1,13 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DB_USER = "postgres" # Update this
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "inventory_forecasting" # Update this
+# Use the 'DATABASE_URL' environment variable from Render settings
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DATABASE_URL = f"postgresql://{DB_USER}:{123456789}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Fix for Render/Heroku which sometimes uses 'postgres://' instead of 'postgresql://'
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
