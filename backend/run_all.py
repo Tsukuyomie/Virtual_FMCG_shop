@@ -74,10 +74,11 @@ async def run_simulation():
             await asyncio.sleep(10)
 
 async def start_app():
-    config = uvicorn.Config(main.app, host="127.0.0.1", port=8000, reload=False)
+    # Change host to 0.0.0.0 for deployment
+    config = uvicorn.Config("main:app", host="0.0.0.0", port=8000, reload=False)
     server = uvicorn.Server(config)
-    # This runs the API and the Simulation in parallel
     await asyncio.gather(server.serve(), run_simulation())
 
 if __name__ == "__main__":
+
     asyncio.run(start_app())
