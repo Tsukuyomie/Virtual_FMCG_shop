@@ -33,42 +33,53 @@ const Dashboard = () => {
     }
   };
 
-  ws.onmessage = (event) => {
-  const incoming = JSON.parse(event.data);
-  if (incoming.type === "SALE") {
-    // Your update logic here...
-  }
-};
-
   useEffect(() => {
     fetchData();
-    // Poll every 2 minutes for deep sync
+    // Poll every 2 minutes for a hard sync
     const interval = setInterval(fetchData, 120000);
 
+    // Initialize WebSocket
     const ws = new WebSocket('wss://virtual-fmcg-shop.onrender.com/ws');
-    
-    ws.onmessage = (event) => {
-      const incoming = JSON.parse(event.data);
-      if (incoming.type === "SALE") {
-        // 1. Update Live Feed
-        setLiveFeed(prev => [incoming.message, ...prev].slice(0, 10));
 
-        // 2. Instant KPI update for that "Live" feel
-        setData(prev => ({
-          ...prev,
-          kpis: {
-            ...prev.kpis,
-            revenue: (prev.kpis.revenue || 0) + incoming.total_price,
-            profit: (prev.kpis.profit || 0) + (incoming.total_price * 0.25),
-            orders: (prev.kpis.orders || 0) + 1
-          }
-        }));
+    ws.onopen = () => {
+      console.log("✅ WebSocket Connected");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const incoming = JSON.parse(event.data);
+        
+        if (incoming.type === "SALE") {
+          // 1. Update the scrolling feed
+          setLiveFeed(prev => [incoming.message, ...prev].slice(0, 10));
+
+          // 2. Update the KPI numbers in real-time
+          setData(prev => ({
+            ...prev,
+            kpis: {
+              ...prev.kpis,
+              revenue: (prev.kpis.revenue || 0) + (incoming.total_price || 0),
+              profit: (prev.kpis.profit || 0) + ((incoming.total_price || 0) * 0.25),
+              orders: (prev.kpis.orders || 0) + 1
+            }
+          }));
+        }
+      } catch (e) {
+        console.error("Error parsing WebSocket message:", e);
       }
     };
 
+    ws.onerror = (error) => {
+      console.error("❌ WebSocket Error:", error);
+    };
+
+    // Cleanup function
     return () => {
       clearInterval(interval);
-      ws.close();
+      // Safety check: Only close if ws was defined and is open
+      if (ws) {
+        ws.close();
+      }
     };
   }, []);
 
@@ -78,14 +89,15 @@ const Dashboard = () => {
         <h1>FMCG Intelligence <span className="status-badge">Live Updates</span></h1>
       </header>
 
+      {/* KPI Section */}
       <div className="kpi-grid">
         <div className="kpi-card">
             <h3>Gross Revenue</h3>
-            <p>₹{data.kpis.revenue?.toLocaleString()}</p>
+            <p>₹{data.kpis.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
         <div className="kpi-card">
             <h3>Net Profit</h3>
-            <p className="green-text">₹{data.kpis.profit?.toLocaleString()}</p>
+            <p className="green-text">₹{data.kpis.profit?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
         <div className="kpi-card">
             <h3>Orders</h3>
@@ -100,6 +112,7 @@ const Dashboard = () => {
       </div>
 
       <div className="main-grid">
+        {/* Main Chart */}
         <div className="chart-container span-2">
           <h3>Revenue & Profit Momentum</h3>
           <ResponsiveContainer width="100%" height={350}>
@@ -107,15 +120,16 @@ const Dashboard = () => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="hour" stroke="#94a3b8" />
               <YAxis yAxisId="left" stroke="#3b82f6" tickFormatter={(v) => `₹${v}`} />
-              <YAxis yAxisId="right" orientation="right" stroke="#10b981" />
+              <YAxis yAxisId="right" orientation="right" stroke="#10b981" tickFormatter={(v) => `₹${v}`} />
               <Tooltip />
               <Legend verticalAlign="top" align="right" />
               <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#dbeafe" stroke="#3b82f6" />
-              <Line yAxisId="right" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} />
+              <Line yAxisId="right" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
+        {/* Real-time Feed */}
         <div className="chart-container">
           <h3>Real-time Activity</h3>
           <div className="feed-list">
@@ -133,4 +147,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
