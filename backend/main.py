@@ -21,13 +21,14 @@ def get_kpis():
             SELECT 
                 COALESCE(SUM(s.total_price), 0) as revenue,
                 COALESCE(SUM(s.total_price) * 0.25, 0) as profit,
-                COUNT(s.id) as orders,
+                COUNT(*) as orders,  -- Changed from s.id to *
                 COALESCE(AVG(s.total_price), 0) as aov,
                 (SELECT m.category FROM sales_transactions s2 
                  JOIN sku_master m ON s2.sku_id = m.sku_id 
                  GROUP BY m.category ORDER BY SUM(s2.total_price) DESC LIMIT 1) as top_cat
             FROM sales_transactions s
         """)
+        # ... rest of your code
         res = conn.execute(query).fetchone()
         
         # Checking inventory_snapshot table
@@ -150,3 +151,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except:
 
         manager.disconnect(websocket)
+
