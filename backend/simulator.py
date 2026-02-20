@@ -11,14 +11,14 @@ async def run_simulation():
     
     while True:
         try:
-            # HEARTBEAT: Send a PING to keep Render connection alive while we wait for a customer
+            # HEARTBEAT: Send a PING to keep Render connection alive while we wait
             await manager.broadcast({"type": "PING"})
 
             with engine.connect() as conn:
-                # 1. Randomize Basket Size
+                # 1. Randomize Basket Size (1-3 items)
                 num_items = random.choices([1, 2, 3], weights=[70, 20, 10])[0]
 
-                # 2. Pick distinct products
+                # 2. Pick distinct products from your database
                 query = text(f"""
                     SELECT sku_id, product_name, base_price 
                     FROM sku_master 
@@ -43,6 +43,7 @@ async def run_simulation():
                     item_names.append(f"{units_sold}x {product_name}")
 
                     # 4. Record to Database (Using full timestamp for hourly charts)
+                    # This ensures data is PERSISTENT and doesn't reset on refresh
                     conn.execute(text("""
                         INSERT INTO sales_transactions 
                         (sales_date, sku_id, store_id, units_sold, unit_price, total_price, discount, channel)
@@ -59,41 +60,24 @@ async def run_simulation():
                         "channel": "Retail"
                     })
                 
+                # Commit the transaction to the database
                 conn.commit()
 
-                # 5. Broadcast to Dashboard
+                # 5. Broadcast to Dashboard via WebSocket
                 timestamp = datetime.now().strftime("%H:%M:%S")
                 summary = f"New Customer: {', '.join(item_names)}"
                 
                 await manager.broadcast({
                     "type": "SALE",
                     "message": summary,
-                    "total_price": round(total_basket_price, 2), # Crucial for React state
+                    "total_price": round(total_basket_price, 2),
                     "time": timestamp
                 })
                 
                 print(f"📡 Broadcasted: {summary} (₹{total_basket_price})")
 
-            # Inside simulator.py -> run_simulation()
-                  with engine.connect() as conn:
-    # ... (calculate price and units)
-    
-    # THIS LINE SAVES THE DATA PERMANENTLY
-                    conn.execute(text("""
-                        INSERT INTO sales_transactions (sales_date, sku_id, units_sold, unit_price, total_price)
-                        VALUES (:sales_date, :sku_id, :units, :price, :total)
-                    """), {
-                        "sales_date": datetime.now(), # Uses current time
-                        "sku_id": random_sku,
-                        "units": units,
-                        "price": price,
-                        "total": price * units
-                    })
-    
-    conn.commit() # Don't forget this! Without commit, nothing is saved.
-
-            # 6. TIMING: Wait between customers (Adjusted for testing: 30-60s)
-            # Change back to (120, 300) for slow authentic mode later
+            # 6. TIMING: Wait between customers
+            # Shortened slightly for testing, change to (120, 300) for "Slow" mode later
             wait_time = random.randint(30, 60) 
             print(f"Next customer in {wait_time}s...")
             await asyncio.sleep(wait_time)
@@ -101,5 +85,3 @@ async def run_simulation():
         except Exception as e:
             print(f"⚠️ Simulation Error: {e}")
             await asyncio.sleep(10)
-
-
