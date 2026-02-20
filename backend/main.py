@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from database import engine
 from websocket_manager import manager
+import asyncio
+import random
 
 app = FastAPI()
 
@@ -13,6 +15,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Add this after your app = FastAPI()
+async def send_simulated_sales():
+    while True:
+        await asyncio.sleep(10) # Send a new sale every 10 seconds
+        new_sale = {
+            "type": "NEW_SALE",
+            "revenue": round(random.uniform(50, 200), 2),
+            "product": "Quick Item",
+            "time": datetime.now().strftime("%H:%M")
+        }
+        await manager.broadcast(new_sale)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(send_simulated_sales())
+
 
 @app.post("/simulate")
 async def trigger_simulation():
@@ -166,6 +186,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
+
 
 
 
