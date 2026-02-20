@@ -96,4 +96,21 @@ async def run_simulation():
 
         except Exception as e:
             print(f"⚠️ Simulation Error: {e}")
+
             await asyncio.sleep(20)
+
+      async def simulate_sales():
+          while True:
+              await asyncio.sleep(5) # Check every 5 seconds
+        
+        # Every 5 seconds, we send a 'ping' just to keep the line open
+              await manager.broadcast({"type": "PING"})
+        
+        # Occasionally send a real sale
+          if random.random() > 0.7:  # 30% chance for a real sale every 5s
+            price = round(random.uniform(100, 1000), 2)
+            await manager.broadcast({
+                "type": "SALE",
+                "message": f"New Sale: ₹{price}",
+                "total_price": price
+            })
