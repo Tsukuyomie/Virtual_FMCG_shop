@@ -37,7 +37,7 @@ const Dashboard = () => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
 
-    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+    const ws = new WebSocket(`wss://${window.location.host}/ws`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "SALE") {
@@ -162,5 +162,6 @@ const Dashboard = () => {
     </div>
   );
 };
+
 
 export default Dashboard;
