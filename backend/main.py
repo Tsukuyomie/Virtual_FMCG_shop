@@ -17,34 +17,33 @@ app.add_middleware(
 @app.get("/kpi")
 def get_kpis():
     with engine.connect() as conn:
+        # Use COALESCE on everything to prevent 'NoneType' errors if DB is empty
         query = text("""
             SELECT 
-                COALESCE(SUM(s.total_price), 0) as revenue,
-                COALESCE(SUM(s.total_price) * 0.25, 0) as profit,
-                COUNT(*) as orders,  -- Changed from s.id to *
-                COALESCE(AVG(s.total_price), 0) as aov,
-                (SELECT m.category FROM sales_transactions s2 
-                 JOIN sku_master m ON s2.sku_id = m.sku_id 
-                 GROUP BY m.category ORDER BY SUM(s2.total_price) DESC LIMIT 1) as top_cat
-            FROM sales_transactions s
+                COALESCE(SUM(total_price), 0) as revenue,
+                COALESCE(SUM(total_price) * 0.25, 0) as profit,
+                COUNT(*) as orders,
+                COALESCE(AVG(total_price), 0) as aov
+            FROM sales_transactions
         """)
-        # ... rest of your code
         res = conn.execute(query).fetchone()
         
-        # Checking inventory_snapshot table
-        stock_query = text("SELECT COUNT(*) FROM inventory_snapshot WHERE stock_on_hand < 50")
-        low_stock = conn.execute(stock_query).scalar()
+        # Separating this to prevent the whole route from crashing if category is missing
+        cat_query = text("""
+            SELECT m.category FROM sales_transactions s 
+            JOIN sku_master m ON s.sku_id = m.sku_id 
+            GROUP BY m.category ORDER BY SUM(s.total_price) DESC LIMIT 1
+        """)
+        top_cat_res = conn.execute(cat_query).fetchone()
+        top_cat = top_cat_res[0] if top_cat_res else "N/A"
 
-    return {
-        "revenue": float(res[0]),
-        "profit": float(res[1]),
-        "orders": int(res[2]),
-        "margin": 25.0,
-        "aov": round(float(res[3]), 2),
-        "avg_units": 1.2,
-        "top_category": res[4] or "N/A",
-        "low_stock_count": int(low_stock or 0)
-    }
+        return {
+            "revenue": float(res[0]),
+            "profit": float(res[1]),
+            "orders": int(res[2]),
+            "aov": round(float(res[3]), 2),
+            "top_category": top_cat
+        }
 
 @app.get("/category_sales")
 def category_sales():
@@ -151,4 +150,5 @@ async def websocket_endpoint(websocket: WebSocket):
     except:
 
         manager.disconnect(websocket)
+
 
