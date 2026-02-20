@@ -86,23 +86,6 @@ def inventory_alerts():
         """)).fetchall()
     return [{"name": r[0], "stock": r[1]} for r in rows]
 
-@app.get("/hourly_sales")
-def hourly_sales():
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT EXTRACT(HOUR FROM sales_date::TIMESTAMP) as hr, 
-                   SUM(total_price) as rev,
-                   SUM(total_price * 0.25) as prof
-            FROM sales_transactions
-            WHERE sales_date::DATE = CURRENT_DATE
-            GROUP BY hr ORDER BY hr
-        """)).fetchall()
-    
-    db_data = {int(r[0]): {"revenue": float(r[1]), "profit": float(r[2])} for r in rows}
-    return [{"hour": f"{h}:00", 
-             "revenue": db_data.get(h, {}).get("revenue", 0),
-             "profit": db_data.get(h, {}).get("profit", 0)} for h in range(9, 22)]
-
 @app.get("/profit_distribution")
 def profit_distribution():
     with engine.connect() as conn:
@@ -165,4 +148,5 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             await websocket.receive_text()
     except:
+
         manager.disconnect(websocket)
