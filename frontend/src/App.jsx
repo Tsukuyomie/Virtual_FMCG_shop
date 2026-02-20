@@ -10,7 +10,7 @@ const Dashboard = () => {
     hourly: [], 
     distribution: [], 
     timeOfDay: [], 
-    kpis: {} 
+    kpis: { revenue: 0, profit: 0, aov: 0, orders: 0, low_stock_count: 0 } 
   });
   const [liveFeed, setLiveFeed] = useState([]);
 
@@ -35,13 +35,27 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    // Poll every 2 minutes for deep sync
+    const interval = setInterval(fetchData, 120000);
 
     const ws = new WebSocket('wss://virtual-fmcg-shop.onrender.com/ws');
+    
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "SALE") {
-        setLiveFeed(prev => [data.message, ...prev].slice(0, 10));
+      const incoming = JSON.parse(event.data);
+      if (incoming.type === "SALE") {
+        // 1. Update Live Feed
+        setLiveFeed(prev => [incoming.message, ...prev].slice(0, 10));
+
+        // 2. Instant KPI update for that "Live" feel
+        setData(prev => ({
+          ...prev,
+          kpis: {
+            ...prev.kpis,
+            revenue: (prev.kpis.revenue || 0) + incoming.total_price,
+            profit: (prev.kpis.profit || 0) + (incoming.total_price * 0.25),
+            orders: (prev.kpis.orders || 0) + 1
+          }
+        }));
       }
     };
 
@@ -57,7 +71,6 @@ const Dashboard = () => {
         <h1>FMCG Intelligence <span className="status-badge">Live Updates</span></h1>
       </header>
 
-      {/* KPI Section */}
       <div className="kpi-grid">
         <div className="kpi-card">
             <h3>Gross Revenue</h3>
@@ -68,11 +81,11 @@ const Dashboard = () => {
             <p className="green-text">₹{data.kpis.profit?.toLocaleString()}</p>
         </div>
         <div className="kpi-card">
-            <h3>Average Order</h3>
-            <p>₹{data.kpis.aov?.toFixed(2)}</p>
+            <h3>Orders</h3>
+            <p>{data.kpis.orders}</p>
         </div>
         <div className="kpi-card">
-            <h3>Low Stock Items</h3>
+            <h3>Low Stock</h3>
             <p className={data.kpis.low_stock_count > 0 ? "red-text" : ""}>
                 {data.kpis.low_stock_count}
             </p>
@@ -80,39 +93,22 @@ const Dashboard = () => {
       </div>
 
       <div className="main-grid">
-        {/* Dual Axis: Revenue vs Profit */}
         <div className="chart-container span-2">
-          <h3>Revenue & Profit Momentum (Dual Axis)</h3>
+          <h3>Revenue & Profit Momentum</h3>
           <ResponsiveContainer width="100%" height={350}>
             <ComposedChart data={data.hourly}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="hour" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis 
-                yAxisId="left" 
-                stroke="#3b82f6" 
-                fontSize={12} 
-                axisLine={false} 
-                tickLine={false}
-                tickFormatter={(val) => `₹${val}`} 
-              />
-              <YAxis 
-                yAxisId="right" 
-                orientation="right" 
-                stroke="#10b981" 
-                fontSize={12} 
-                axisLine={false} 
-                tickLine={false}
-                tickFormatter={(val) => `₹${val}`} 
-              />
-              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" />
-              <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#dbeafe" stroke="#3b82f6" strokeWidth={2} />
-              <Line yAxisId="right" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+              <XAxis dataKey="hour" stroke="#94a3b8" />
+              <YAxis yAxisId="left" stroke="#3b82f6" tickFormatter={(v) => `₹${v}`} />
+              <YAxis yAxisId="right" orientation="right" stroke="#10b981" />
+              <Tooltip />
+              <Legend verticalAlign="top" align="right" />
+              <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#dbeafe" stroke="#3b82f6" />
+              <Line yAxisId="right" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Transaction Feed */}
         <div className="chart-container">
           <h3>Real-time Activity</h3>
           <div className="feed-list">
@@ -124,45 +120,9 @@ const Dashboard = () => {
             )) : <p className="empty-msg">Waiting for transactions...</p>}
           </div>
         </div>
-
-        {/* Profit Box Plot (Day-wise Min/Max/Avg) */}
-        <div className="chart-container span-2">
-          <h3>Daily Profit Distribution (Min - Avg - Max)</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.distribution}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} tickLine={false} />
-              <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip />
-              {/* Range indicator (Min to Max) */}
-              <Bar dataKey={(d) => [d.min, d.max]} fill="#e2e8f0" barSize={12} radius={6} />
-              {/* Average marker */}
-              <Bar dataKey="avg" fill="#3b82f6" barSize={35} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Sales by Time of Day */}
-        <div className="chart-container">
-          <h3>Peak Period Analysis</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.timeOfDay}>
-              <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} />
-              <YAxis hide />
-              <Tooltip cursor={{fill: 'transparent'}} />
-              <Bar dataKey="revenue" radius={[10, 10, 0, 0]} barSize={50}>
-                {data.timeOfDay.map((entry, index) => (
-                  <Cell key={index} fill={entry.name === 'Afternoon' ? '#3b82f6' : '#94a3b8'} opacity={0.8} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
       </div>
     </div>
   );
 };
 
-
 export default Dashboard;
-
