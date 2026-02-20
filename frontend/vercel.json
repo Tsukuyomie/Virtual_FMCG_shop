@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": "https://virtual-fmcg-shop.onrender.com/:path*"
     },
     {
