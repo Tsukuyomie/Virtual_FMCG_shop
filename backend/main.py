@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from database import engine
 from websocket_manager import manager
-from simulation import run_simulation  # <--- 1. Import your complex simulation
+from simulator import run_simulation # <--- 1. Import your complex simulation
 import asyncio
 import random
 from datetime import datetime
@@ -72,3 +72,4 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         manager.disconnect(websocket)
         print("🔌 Connection closed")
+
