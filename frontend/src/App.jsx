@@ -33,6 +33,13 @@ const Dashboard = () => {
     }
   };
 
+  ws.onmessage = (event) => {
+  const incoming = JSON.parse(event.data);
+  if (incoming.type === "SALE") {
+    // Your update logic here...
+  }
+};
+
   useEffect(() => {
     fetchData();
     // Poll every 2 minutes for deep sync
@@ -126,3 +133,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
