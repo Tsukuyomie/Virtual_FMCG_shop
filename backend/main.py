@@ -9,6 +9,7 @@ from datetime import datetime
 
 app = FastAPI()
 
+# 1. CORS Configuration for Vercel
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,42 +18,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# Add this after your app = FastAPI()
+# 2. Background Simulation Task
 async def send_simulated_sales():
+    print("🚀 Simulation Loop Started")
     while True:
-        await asyncio.sleep(10) # Send a new sale every 10 seconds
-        new_sale = {
-            "type": "NEW_SALE",
-            "revenue": round(random.uniform(50, 200), 2),
-            "product": "Quick Item",
-            "time": datetime.now().strftime("%H:%M")
-        }
-        await manager.broadcast(new_sale)
+        try:
+            # Send a PING every 5 seconds to keep Render connection alive
+            await asyncio.sleep(5)
+            await manager.broadcast({"type": "PING"})
+            
+            # ~30% chance to send a real sale every 5 seconds
+            if random.random() > 0.7:
+                price = round(random.uniform(50, 500), 2)
+                new_sale = {
+                    "type": "SALE",  # Matches Dashboard.jsx
+                    "total_price": price,
+                    "message": f"New Sale: Product {random.randint(1, 100)} for ₹{price}",
+                    "time": datetime.now().strftime("%H:%M")
+                }
+                print(f"📡 Broadcasting Sale: ₹{price}")
+                await manager.broadcast(new_sale)
+                
+        except Exception as e:
+            print(f"⚠️ Simulation Loop Error: {e}")
+            await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():
+    # Kicks off the simulation in the background
     asyncio.create_task(send_simulated_sales())
 
-
-@app.post("/simulate")
-async def trigger_simulation():
-    # This simulates a sale and broadcasts it via WebSocket
-    new_sale = {
-        "id": random.randint(1000, 9999),
-        "message": f"Simulated Sale: Product {random.randint(1, 100)}",
-        "time": datetime.now().strftime("%H:%M"),
-        "total_price": round(random.uniform(10.0, 500.0), 2)
-    }
-    
-    # Send to all connected WebSocket clients
-    await manager.broadcast(new_sale)
-    return {"status": "Simulation sent"}
-
+# 3. HTTP Routes
 @app.get("/kpi")
 def get_kpis():
     with engine.connect() as conn:
-        # Use COALESCE on everything to prevent 'NoneType' errors if DB is empty
         query = text("""
             SELECT 
                 COALESCE(SUM(total_price), 0) as revenue,
@@ -63,7 +62,6 @@ def get_kpis():
         """)
         res = conn.execute(query).fetchone()
         
-        # Separating this to prevent the whole route from crashing if category is missing
         cat_query = text("""
             SELECT m.category FROM sales_transactions s 
             JOIN sku_master m ON s.sku_id = m.sku_id 
@@ -72,12 +70,16 @@ def get_kpis():
         top_cat_res = conn.execute(cat_query).fetchone()
         top_cat = top_cat_res[0] if top_cat_res else "N/A"
 
+        low_stock_query = text("SELECT COUNT(*) FROM inventory_snapshot WHERE stock_on_hand < 50")
+        low_stock = conn.execute(low_stock_query).scalar()
+
         return {
             "revenue": float(res[0]),
             "profit": float(res[1]),
             "orders": int(res[2]),
             "aov": round(float(res[3]), 2),
-            "top_category": top_cat
+            "top_category": top_cat,
+            "low_stock_count": int(low_stock or 0)
         }
 
 @app.get("/category_sales")
@@ -95,41 +97,28 @@ def category_sales():
 @app.get("/hourly_sales")
 def hourly_sales():
     with engine.connect() as conn:
-        # Added WHERE clause to show ONLY today's performance
         rows = conn.execute(text("""
-            SELECT EXTRACT(HOUR FROM sales_date::TIMESTAMP) as hr, SUM(total_price)
+            SELECT EXTRACT(HOUR FROM sales_date::TIMESTAMP) as hr, 
+                   SUM(total_price) as rev, 
+                   SUM(total_price * 0.25) as prof
             FROM sales_transactions
             WHERE sales_date::DATE = CURRENT_DATE
             GROUP BY hr ORDER BY hr
         """)).fetchall()
     
-    db_data = {int(r[0]): float(r[1]) for r in rows}
-    # Standardizing hours 9 AM to 10 PM for the chart
-    return [{"hour": f"{h}:00", "revenue": db_data.get(h, 0)} for h in range(9, 22)]
-
-@app.get("/inventory_alerts")
-def inventory_alerts():
-    with engine.connect() as conn:
-        # FIX: Added JOIN with sku_master to get the product_name
-        rows = conn.execute(text("""
-            SELECT m.product_name, i.stock_on_hand 
-            FROM inventory_snapshot i
-            JOIN sku_master m ON i.sku_id = m.sku_id
-            WHERE i.stock_on_hand < 50 
-            ORDER BY i.stock_on_hand ASC 
-            LIMIT 5
-        """)).fetchall()
-    return [{"name": r[0], "stock": r[1]} for r in rows]
+    db_data = {int(r[0]): {"revenue": float(r[1]), "profit": float(r[2])} for r in rows}
+    return [{"hour": f"{h}:00", 
+             "revenue": db_data.get(h, {}).get("revenue", 0),
+             "profit": db_data.get(h, {}).get("profit", 0)} for h in range(9, 22)]
 
 @app.get("/profit_distribution")
 def profit_distribution():
     with engine.connect() as conn:
-        # Simulating a Box Plot by getting Min, Max, and Avg profit per day
         rows = conn.execute(text("""
             SELECT sales_date::DATE as dt, 
-                   MIN(total_price * 0.25) as min_p,
-                   MAX(total_price * 0.25) as max_p,
-                   AVG(total_price * 0.25) as avg_p
+                   MIN(total_price * 0.25), 
+                   MAX(total_price * 0.25), 
+                   AVG(total_price * 0.25)
             FROM sales_transactions
             GROUP BY dt ORDER BY dt DESC LIMIT 7
         """)).fetchall()
@@ -151,49 +140,17 @@ def time_of_day_sales():
         """)).fetchall()
     return [{"name": r[0], "value": float(r[1])} for r in rows]
 
-@app.get("/top_skus")
-def top_skus():
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT m.product_name, SUM(s.units_sold) as total
-            FROM sales_transactions s
-            JOIN sku_master m ON s.sku_id = m.sku_id
-            GROUP BY m.product_name ORDER BY total DESC LIMIT 5
-        """)).fetchall()
-    return [{"product_name": r[0], "units": int(r[1])} for r in rows]
-
-
-
-@app.get("/recent_sales")
-def recent_sales():
-    with engine.connect() as conn:
-        # This will now show the actual time of the sale
-        rows = conn.execute(text("""
-            SELECT s.id, m.product_name, s.total_price, TO_CHAR(s.sales_date::TIMESTAMP, 'HH24:MI')
-            FROM sales_transactions s
-            JOIN sku_master m ON s.sku_id = m.sku_id
-            ORDER BY s.id DESC LIMIT 6
-        """)).fetchall()
-    return [{"id": r[0], "message": f"Sold {r[1]} for ₹{r[2]}", "time": r[3]} for r in rows]
-
+# 4. WebSocket Endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    print("✅ Client connected to WebSocket")
+    print(f"✅ Client Connected. Active: {len(manager.active_connections)}")
     try:
         while True:
-            # This 'await' keeps the connection open by waiting for data
-            # even if we don't plan to do anything with the incoming text.
-            data = await websocket.receive_text()
+            # Keep line open by listening for any client message
+            await websocket.receive_text()
     except Exception as e:
         print(f"❌ WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
         print("🔌 Connection closed")
-
-
-
-
-
-
-
