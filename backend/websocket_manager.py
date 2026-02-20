@@ -3,6 +3,7 @@ from typing import List
 
 class ConnectionManager:
     def __init__(self):
+        # This list tracks every browser tab currently viewing your dashboard
         self.active_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
@@ -14,12 +15,14 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
+        # Loop through every open connection and send the update
         for connection in self.active_connections:
             try:
-                # We use send_json so the frontend can easily parse it
+                # send_json automatically handles the string conversion for React
                 await connection.send_json(message)
-            except:
+            except Exception:
+                # If a connection is broken (e.g., user closed tab), we skip it
                 continue
 
-# --- THIS IS THE MISSING LINE CAUSING YOUR ERROR ---
+# This instance is imported by main.py to send the live sales
 manager = ConnectionManager()
