@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://your-backend-service.onrender.com/$1"
+      "destination": "https://virtual-fmcg-shop.onrender.com"
     },
     {
       "source": "/(.*)",
