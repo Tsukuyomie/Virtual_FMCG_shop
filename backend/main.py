@@ -14,6 +14,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.post("/simulate")
+async def trigger_simulation():
+    # This simulates a sale and broadcasts it via WebSocket
+    new_sale = {
+        "id": random.randint(1000, 9999),
+        "message": f"Simulated Sale: Product {random.randint(1, 100)}",
+        "time": datetime.now().strftime("%H:%M"),
+        "total_price": round(random.uniform(10.0, 500.0), 2)
+    }
+    
+    # Send to all connected WebSocket clients
+    await manager.broadcast(new_sale)
+    return {"status": "Simulation sent"}
+
 @app.get("/kpi")
 def get_kpis():
     with engine.connect() as conn:
@@ -150,5 +164,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except:
 
         manager.disconnect(websocket)
+
 
 
