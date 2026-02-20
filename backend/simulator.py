@@ -74,6 +74,24 @@ async def run_simulation():
                 
                 print(f"📡 Broadcasted: {summary} (₹{total_basket_price})")
 
+            # Inside simulator.py -> run_simulation()
+with engine.connect() as conn:
+    # ... (calculate price and units)
+    
+    # THIS LINE SAVES THE DATA PERMANENTLY
+    conn.execute(text("""
+        INSERT INTO sales_transactions (sales_date, sku_id, units_sold, unit_price, total_price)
+        VALUES (:sales_date, :sku_id, :units, :price, :total)
+    """), {
+        "sales_date": datetime.now(), # Uses current time
+        "sku_id": random_sku,
+        "units": units,
+        "price": price,
+        "total": price * units
+    })
+    
+    conn.commit() # Don't forget this! Without commit, nothing is saved.
+
             # 6. TIMING: Wait between customers (Adjusted for testing: 30-60s)
             # Change back to (120, 300) for slow authentic mode later
             wait_time = random.randint(30, 60) 
@@ -83,3 +101,4 @@ async def run_simulation():
         except Exception as e:
             print(f"⚠️ Simulation Error: {e}")
             await asyncio.sleep(10)
+
