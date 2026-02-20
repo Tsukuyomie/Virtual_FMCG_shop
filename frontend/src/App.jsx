@@ -37,7 +37,7 @@ const Dashboard = () => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
 
-    const ws = new WebSocket(`wss://${window.location.host}/ws`);
+    const ws = new WebSocket('wss://virtual-fmcg-shop.onrender.com/ws');
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "SALE") {
@@ -165,3 +165,4 @@ const Dashboard = () => {
 
 
 export default Dashboard;
+
