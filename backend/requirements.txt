@@ -5,3 +5,4 @@ sqlalchemy
 pandas
 numpy
 python-dotenv
+websocket
