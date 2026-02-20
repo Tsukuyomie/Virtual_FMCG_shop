@@ -160,10 +160,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
-    except:
-
+            data = await websocket.receive_text()
+            # Handle messages if needed
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
         manager.disconnect(websocket)
+
 
 
 
