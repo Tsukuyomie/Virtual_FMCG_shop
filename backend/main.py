@@ -178,14 +178,18 @@ def recent_sales():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    print("✅ Client connected to WebSocket")
     try:
         while True:
+            # This 'await' keeps the connection open by waiting for data
+            # even if we don't plan to do anything with the incoming text.
             data = await websocket.receive_text()
-            # Handle messages if needed
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"❌ WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
+        print("🔌 Connection closed")
+
 
 
 
