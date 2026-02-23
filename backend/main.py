@@ -47,7 +47,7 @@ def get_kpis():
         cat_query = text("""
             SELECT m.category FROM sales_transactions s 
             JOIN sku_master m ON s.sku_id = m.sku_id 
-            WHERE s.sales_date >= (NOW() - INTERVAL '24 hours')
+            WHERE sales_date >= (CURRENT_TIMESTAMP - INTERVAL '24 hours')
             GROUP BY m.category ORDER BY SUM(s.total_price) DESC LIMIT 1
         """)
         top_cat_res = conn.execute(cat_query).fetchone()
@@ -130,3 +130,4 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         manager.disconnect(websocket)
         print("🔌 Connection closed")
+
