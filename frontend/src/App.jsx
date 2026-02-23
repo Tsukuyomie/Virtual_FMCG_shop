@@ -34,18 +34,24 @@ const Dashboard = () => {
 
   const fetchData = async () => {
     try {
-      const endpoints = ['hourly_sales', 'kpi', 'category_performance', 'basket_distribution'];
-      const responses = await Promise.all(
-        endpoints.map(ep => axios.get(`/api/${ep}`))
-      );
-      setData({
-        hourly: responses[0].data,
-        kpis: responses[1].data,
-        categoryPerformance: responses[2].data,
-        basketDistribution: responses[3].data
+      // Use the absolute URL of your Render backend
+      const BASE_URL = 'https://virtual-fmcg-shop.onrender.com';
+      
+      const [hr, kpi, cat, basket] = await Promise.all([
+        axios.get(`${BASE_URL}/hourly_sales`),
+        axios.get(`${BASE_URL}/kpi`),
+        axios.get(`${BASE_URL}/category_performance`),
+        axios.get(`${BASE_URL}/basket_distribution`)
+      ]);
+
+      setData({ 
+        hourly: hr.data, 
+        kpis: kpi.data,
+        categoryPerformance: cat.data,
+        basketDistribution: basket.data
       });
     } catch (err) {
-      console.error("BI Engine Error:", err);
+      console.error("Fetch Failure:", err);
     }
   };
 
@@ -172,3 +178,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
