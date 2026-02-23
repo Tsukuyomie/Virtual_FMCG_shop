@@ -27,13 +27,13 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 FMCG Backend Starting...")
+    # Kicks off the background simulation task
     asyncio.create_task(run_simulation())
 
 # --- DIAGNOSTIC ROUTE ---
-# If you visit your-url.onrender.com/ and see this, the 404s are a routing issue.
 @app.get("/")
 def health_check():
-    return {"status": "online", "timestamp": datetime.now().isoformat()}
+    return {"status": "online", "timestamp": datetime.now().isoformat(), "service": "FMCG-Intelligence-API"}
 
 # --- HTTP API ROUTES ---
 
@@ -41,7 +41,7 @@ def health_check():
 def get_kpis():
     try:
         with engine.connect() as conn:
-            # 1. Main KPI Query (Revenue, Profit, Orders)
+            # 1. Main KPI Query (Revenue, Profit, Orders) - Rolling 24h
             query = text("""
                 SELECT 
                     COALESCE(SUM(total_price), 0) as revenue,
@@ -53,7 +53,7 @@ def get_kpis():
             """)
             res = conn.execute(query).fetchone()
             
-            # 2. Top Category Query
+            # 2. Top Category Query - Rolling 24h
             cat_query = text("""
                 SELECT m.category FROM sales_transactions s 
                 JOIN sku_master m ON s.sku_id = m.sku_id 
@@ -63,7 +63,7 @@ def get_kpis():
             top_cat_res = conn.execute(cat_query).fetchone()
             top_cat = top_cat_res[0] if top_cat_res else "N/A"
 
-            # 3. SAFE Inventory Check (Does not crash if table is missing)
+            # 3. SAFE Inventory Check (Defensive if table is missing)
             low_stock = 0
             try:
                 low_stock = conn.execute(text("SELECT COUNT(*) FROM inventory_snapshot WHERE stock_on_hand < 50")).scalar()
@@ -87,7 +87,7 @@ def get_kpis():
 def hourly_sales():
     try:
         with engine.connect() as conn:
-            # Added ::timestamp here too
+            # Extracts hour for Momentum Chart
             rows = conn.execute(text("""
                 SELECT EXTRACT(HOUR FROM sales_date::timestamp) as hr, 
                        SUM(total_price) as rev,
@@ -109,7 +109,6 @@ def hourly_sales():
 def time_of_day_sales():
     try:
         with engine.connect() as conn:
-            # Added ::timestamp to the CASE statement
             rows = conn.execute(text("""
                 SELECT 
                     CASE 
@@ -132,9 +131,9 @@ def profit_distribution():
         with engine.connect() as conn:
             rows = conn.execute(text("""
                 SELECT sales_date::DATE as dt, 
-                       MIN(total_price * 0.25), 
-                       MAX(total_price * 0.25), 
-                       AVG(total_price * 0.25)
+                       MIN(total_price * 0.25) as min_p, 
+                       MAX(total_price * 0.25) as max_p, 
+                       AVG(total_price * 0.25) as avg_p
                 FROM sales_transactions
                 GROUP BY dt ORDER BY dt DESC LIMIT 7
             """)).fetchall()
@@ -145,33 +144,39 @@ def profit_distribution():
 
 @app.get("/category_performance")
 def category_performance():
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT m.category, SUM(s.total_price) as revenue
-            FROM sales_transactions s
-            JOIN sku_master m ON s.sku_id = m.sku_id
-            WHERE s.sales_date::timestamp >= (NOW() - INTERVAL '7 days')
-            GROUP BY m.category
-            ORDER BY revenue DESC
-        """)).fetchall()
-    return [{"category": r[0], "revenue": float(r[1])} for r in rows]
-
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT m.category, SUM(s.total_price) as revenue
+                FROM sales_transactions s
+                JOIN sku_master m ON s.sku_id = m.sku_id
+                WHERE s.sales_date::timestamp >= (CURRENT_TIMESTAMP - INTERVAL '7 days')
+                GROUP BY m.category
+                ORDER BY revenue DESC
+            """)).fetchall()
+        return [{"category": r[0], "revenue": float(r[1])} for r in rows]
+    except Exception as e:
+        logger.error(f"❌ Category Performance Error: {e}")
+        return []
 
 @app.get("/basket_analysis")
 def basket_analysis():
-    with engine.connect() as conn:
-        # Counts how many items were in each unique transaction timestamp
-        rows = conn.execute(text("""
-            SELECT item_count, COUNT(*) as frequency
-            FROM (
-                SELECT sales_date, COUNT(*) as item_count
-                FROM sales_transactions
-                GROUP BY sales_date
-            ) t
-            GROUP BY item_count ORDER BY item_count
-        """)).fetchall()
-    return [{"items": r[0], "frequency": int(r[1])} for r in rows]
-
+    try:
+        with engine.connect() as conn:
+            # Analyzes how many items are typically in a single customer checkout
+            rows = conn.execute(text("""
+                SELECT item_count, COUNT(*) as frequency
+                FROM (
+                    SELECT sales_date, COUNT(*) as item_count
+                    FROM sales_transactions
+                    GROUP BY sales_date
+                ) t
+                GROUP BY item_count ORDER BY item_count
+            """)).fetchall()
+        return [{"items": r[0], "frequency": int(r[1])} for r in rows]
+    except Exception as e:
+        logger.error(f"❌ Basket Analysis Error: {e}")
+        return []
 
 # 4. WebSocket Endpoint
 @app.websocket("/ws")
@@ -180,11 +185,9 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info(f"✅ WS Client Connected. Active: {len(manager.active_connections)}")
     try:
         while True:
+            # Keeps connection open
             await websocket.receive_text()
     except Exception as e:
         logger.warning(f"🔌 WS Connection Closed: {e}")
     finally:
         manager.disconnect(websocket)
-
-
-
