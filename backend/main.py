@@ -41,7 +41,7 @@ def health_check():
 def get_kpis():
     try:
         with engine.connect() as conn:
-            # We cast sales_date to timestamp so we can compare it
+            # 1. Main KPI Query (Revenue, Profit, Orders)
             query = text("""
                 SELECT 
                     COALESCE(SUM(total_price), 0) as revenue,
@@ -53,7 +53,7 @@ def get_kpis():
             """)
             res = conn.execute(query).fetchone()
             
-            # Top Category with Casting
+            # 2. Top Category Query
             cat_query = text("""
                 SELECT m.category FROM sales_transactions s 
                 JOIN sku_master m ON s.sku_id = m.sku_id 
@@ -63,7 +63,13 @@ def get_kpis():
             top_cat_res = conn.execute(cat_query).fetchone()
             top_cat = top_cat_res[0] if top_cat_res else "N/A"
 
-            low_stock = conn.execute(text("SELECT COUNT(*) FROM inventory_snapshot WHERE stock_on_hand < 50")).scalar()
+            # 3. SAFE Inventory Check (Does not crash if table is missing)
+            low_stock = 0
+            try:
+                low_stock = conn.execute(text("SELECT COUNT(*) FROM inventory_snapshot WHERE stock_on_hand < 50")).scalar()
+            except Exception:
+                logger.warning("⚠️ inventory_snapshot table not found, skipping...")
+                low_stock = 0
 
             return {
                 "revenue": round(float(res[0]), 2),
@@ -74,7 +80,7 @@ def get_kpis():
                 "low_stock_count": int(low_stock or 0)
             }
     except Exception as e:
-        logger.error(f"❌ KPI Error: {e}")
+        logger.error(f"❌ Critical KPI Error: {e}")
         return {"revenue": 0, "profit": 0, "orders": 0, "aov": 0, "top_category": "Error", "low_stock_count": 0}
 
 @app.get("/hourly_sales")
@@ -150,4 +156,5 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.warning(f"🔌 WS Connection Closed: {e}")
     finally:
         manager.disconnect(websocket)
+
 
