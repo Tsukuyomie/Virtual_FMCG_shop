@@ -129,6 +129,16 @@ const Dashboard = () => {
           </ResponsiveContainer>
         </div>
 
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data.categoryPerformance} layout="vertical">
+          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+          <XAxis type="number" hide />
+          <YAxis dataKey="category" type="category" width={100} />
+            <Tooltip />
+          <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+
         {/* Real-time Feed */}
         <div className="chart-container">
           <h3>Real-time Activity</h3>
@@ -147,3 +157,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
