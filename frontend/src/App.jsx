@@ -2,144 +2,170 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   ComposedChart, Line, Area, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, Legend, BarChart 
+  Tooltip, ResponsiveContainer, BarChart 
 } from 'recharts';
+
+/**
+ * @component CustomTooltip
+ * @description Uses the .glass-card class for a professional, floating look.
+ */
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="glass-card" style={{ padding: '10px', border: 'none' }}>
+        <p style={{ fontWeight: 700, margin: '0 0 5px', fontSize: '12px' }}>{label}</p>
+        {payload.map((p, i) => (
+          <p key={i} style={{ color: p.color, margin: 0, fontSize: '13px', fontWeight: 500 }}>
+            {p.name}: ₹{p.value.toLocaleString()}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
 const Dashboard = () => {
   const [data, setData] = useState({ 
-    hourly: [], 
-    categoryPerformance: [],
-    basketDistribution: [],
-    kpis: { revenue: 0, profit: 0, aov: 0, orders: 0, low_stock_count: 0, top_category: "N/A" } 
+    hourly: [], categoryPerformance: [], basketDistribution: [],
+    kpis: { revenue: 0, profit: 0, aov: 0, orders: 0, top_category: "Analyzing..." } 
   });
   const [liveFeed, setLiveFeed] = useState([]);
 
   const fetchData = async () => {
     try {
-      // Promise.all handles the initial load from DB
-      const [hr, kpi, cat, basket] = await Promise.all([
-        axios.get('/api/hourly_sales'),
-        axios.get('/api/kpi'),
-        axios.get('/api/category_performance'),
-        axios.get('/api/basket_distribution')
-      ]);
-
-      setData({ 
-        hourly: hr.data, 
-        kpis: kpi.data,
-        categoryPerformance: cat.data,
-        basketDistribution: basket.data
+      const endpoints = ['hourly_sales', 'kpi', 'category_performance', 'basket_distribution'];
+      const responses = await Promise.all(
+        endpoints.map(ep => axios.get(`/api/${ep}`))
+      );
+      setData({
+        hourly: responses[0].data,
+        kpis: responses[1].data,
+        categoryPerformance: responses[2].data,
+        basketDistribution: responses[3].data
       });
     } catch (err) {
-      console.error("Dashboard Fetch Error:", err);
+      console.error("BI Engine Error:", err);
     }
   };
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 60000); 
     const ws = new WebSocket('wss://virtual-fmcg-shop.onrender.com/ws');
-
-    ws.onmessage = (event) => {
-      try {
-        const incoming = JSON.parse(event.data);
-        if (incoming.type === "SALE") {
-          setLiveFeed(prev => [incoming.message, ...prev].slice(0, 10));
-          setData(prev => ({
-            ...prev,
-            kpis: {
-              ...prev.kpis,
-              revenue: prev.kpis.revenue + incoming.total_price,
-              profit: prev.kpis.profit + (incoming.total_price * 0.25),
-              orders: prev.kpis.orders + 1
-            }
-          }));
-        }
-      } catch (e) { console.error(e); }
+    ws.onmessage = (e) => {
+      const incoming = JSON.parse(e.data);
+      if (incoming.type === "SALE") {
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setLiveFeed(prev => [{msg: incoming.message, time}, ...prev].slice(0, 8));
+        setData(prev => ({
+          ...prev,
+          kpis: {
+            ...prev.kpis,
+            revenue: prev.kpis.revenue + incoming.total_price,
+            profit: prev.kpis.profit + (incoming.total_price * 0.25),
+            orders: prev.kpis.orders + 1
+          }
+        }));
+      }
     };
-    return () => { clearInterval(interval); ws.close(); };
+    return () => ws.close();
   }, []);
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      <header style={{ marginBottom: '30px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
-        <h1 style={{ color: '#0f172a', margin: 0 }}>FMCG Intelligence Dashboard</h1>
-        <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>● LIVE FROM DATABASE</span>
-      </header>
+    <div className="grid-layout">
+      {/* 1. Header Section */}
+      <div style={{ gridColumn: 'span 12', marginBottom: '1rem' }}>
+        <h1 style={{ fontWeight: 800, fontSize: '2.5rem', margin: 0, letterSpacing: '-0.02em' }}>
+          FMCG <span style={{ color: 'var(--accent-blue)' }}>Pulse</span>
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+          Real-time Supply Chain & Revenue Intelligence
+        </p>
+      </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h4 style={{ color: '#64748b', margin: '0 0 10px 0' }}>GROSS REVENUE</h4>
-          <h2 style={{ margin: 0 }}>₹{data.kpis.revenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
-        </div>
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h4 style={{ color: '#64748b', margin: '0 0 10px 0' }}>NET PROFIT</h4>
-          <h2 style={{ margin: 0, color: '#10b981' }}>₹{data.kpis.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
-        </div>
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h4 style={{ color: '#64748b', margin: '0 0 10px 0' }}>TOTAL ORDERS</h4>
-          <h2 style={{ margin: 0 }}>{data.kpis.orders}</h2>
-        </div>
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h4 style={{ color: '#64748b', margin: '0 0 10px 0' }}>TOP CATEGORY</h4>
-          <h2 style={{ margin: 0, color: '#3b82f6', fontSize: '1.2em' }}>{data.kpis.top_category}</h2>
+      {/* 2. KPI Section - Using .glass-card and .kpi-value */}
+      <div className="glass-card" style={{ gridColumn: 'span 3' }}>
+        <h3>Gross Revenue</h3>
+        <div className="kpi-value">₹{data.kpis.revenue.toLocaleString()}</div>
+      </div>
+      
+      <div className="glass-card" style={{ gridColumn: 'span 3' }}>
+        <h3>Net Profit</h3>
+        <div className="kpi-value" style={{ color: 'var(--accent-green)' }}>
+          ₹{data.kpis.profit.toLocaleString()}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-        
-        {/* Momentum Chart */}
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3>Sales Momentum (Today)</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={data.hourly}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="hour" />
-              <YAxis tickFormatter={(v) => `₹${v}`} />
-              <Tooltip />
-              <Area type="monotone" dataKey="revenue" fill="#eff6ff" stroke="#3b82f6" />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="glass-card" style={{ gridColumn: 'span 3' }}>
+        <h3>Total Orders</h3>
+        <div className="kpi-value">{data.kpis.orders}</div>
+      </div>
 
-        {/* Category Performance */}
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3>Top Categories</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.categoryPerformance} layout="vertical">
-              <XAxis type="number" hide />
-              <YAxis dataKey="category" type="category" width={80} style={{ fontSize: '12px' }} />
-              <Tooltip />
-              <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="glass-card" style={{ gridColumn: 'span 3' }}>
+        <h3>Peak Category</h3>
+        <div className="kpi-value" style={{ fontSize: '1.2rem', color: 'var(--accent-blue)' }}>
+          {data.kpis.top_category}
         </div>
+      </div>
 
-        {/* Basket Analysis */}
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3>Basket Size Frequency</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.basketDistribution}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="items" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="frequency" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {/* 3. Main Chart - Taking up 8 columns of the 12-column grid */}
+      <div className="glass-card" style={{ gridColumn: 'span 8' }}>
+        <h3>Revenue Momentum</h3>
+        <ResponsiveContainer width="100%" height={350}>
+          <ComposedChart data={data.hourly}>
+            <defs>
+              <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--accent-blue)" stopOpacity={0.1}/>
+                <stop offset="95%" stopColor="var(--accent-blue)" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 12}} />
+            <YAxis axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 12}} />
+            <Tooltip content={<CustomTooltip />} />
+            <Area type="monotone" dataKey="revenue" stroke="var(--accent-blue)" strokeWidth={3} fill="url(#colorRev)" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
 
-        {/* Live Feed */}
-        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowY: 'auto', maxHeight: '340px' }}>
-          <h3>Live Activity</h3>
-          {liveFeed.map((msg, i) => (
-            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9em' }}>
-              <span style={{ color: '#3b82f6', marginRight: '8px' }}>●</span> {msg}
+      {/* 4. Live Stream - Taking up 4 columns */}
+      <div className="glass-card" style={{ gridColumn: 'span 4' }}>
+        <h3>Market Activity Stream</h3>
+        <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+          {liveFeed.map((item, i) => (
+            <div key={i} style={{ padding: '12px 0', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '10px', color: 'var(--accent-blue)', fontWeight: 700 }}>{item.time}</div>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{item.msg}</div>
             </div>
           ))}
-          {liveFeed.length === 0 && <p style={{ color: '#94a3b8' }}>Waiting for shop activity...</p>}
+          {liveFeed.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Awaiting transactions...</p>}
         </div>
+      </div>
+
+      {/* 5. Distribution Charts - Spanning 6 columns each */}
+      <div className="glass-card" style={{ gridColumn: 'span 6' }}>
+        <h3>Category Revenue Split</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data.categoryPerformance} layout="vertical">
+            <XAxis type="number" hide />
+            <YAxis dataKey="category" type="category" width={100} axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="revenue" fill="var(--accent-blue)" radius={[0, 4, 4, 0]} barSize={20} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="glass-card" style={{ gridColumn: 'span 6' }}>
+        <h3>Basket Depth Analysis</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data.basketDistribution}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="items" axisLine={false} tickLine={false} />
+            <YAxis axisLine={false} tickLine={false} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="frequency" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={40} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
