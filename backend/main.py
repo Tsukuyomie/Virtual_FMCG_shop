@@ -143,6 +143,35 @@ def profit_distribution():
         logger.error(f"❌ Profit Dist Error: {e}")
         return []
 
+@app.get("/category_performance")
+def category_performance():
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.category, SUM(s.total_price) as revenue
+            FROM sales_transactions s
+            JOIN sku_master m ON s.sku_id = m.sku_id
+            WHERE s.sales_date::timestamp >= (NOW() - INTERVAL '7 days')
+            GROUP BY m.category
+            ORDER BY revenue DESC
+        """)).fetchall()
+    return [{"category": r[0], "revenue": float(r[1])} for r in rows]
+
+
+@app.get("/basket_analysis")
+def basket_analysis():
+    with engine.connect() as conn:
+        # Counts how many items were in each unique transaction timestamp
+        rows = conn.execute(text("""
+            SELECT item_count, COUNT(*) as frequency
+            FROM (
+                SELECT sales_date, COUNT(*) as item_count
+                FROM sales_transactions
+                GROUP BY sales_date
+            ) t
+            GROUP BY item_count ORDER BY item_count
+        """)).fetchall()
+    return [{"items": r[0], "frequency": int(r[1])} for r in rows]
+
 
 # 4. WebSocket Endpoint
 @app.websocket("/ws")
@@ -156,5 +185,6 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.warning(f"🔌 WS Connection Closed: {e}")
     finally:
         manager.disconnect(websocket)
+
 
 
